@@ -2,7 +2,6 @@ import Config._
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types._
 import org.postgresql.Driver
 
 import java.net.{URL, URLDecoder}
@@ -79,57 +78,38 @@ object data_mart {
       .option("driver", "org.postgresql.Driver")
       .load()
 
-    val shopsPivot = clients.
-      join(visits, Seq("uid"), "inner")
+    val shops = clients.
+      join(visits, Seq("uid"), "left")
+      .withColumn("category_cleaned", concat(lit("shop_"), lower(regexp_replace(col("category"), "-", "_"))))
       .groupBy("uid", "gender", "age")
-      .pivot("category")
+      .pivot("category_cleaned")
       .agg(count(col("uid")))
 
-    val excludedColumns = Set("uid", "gender", "age")
-
-    var shops = shopsPivot
-
-    for (colName <- shopsPivot.columns) {
-      if (!excludedColumns.contains(colName)) {
-        shops = shops.withColumnRenamed(colName, "shop_" + colName.toLowerCase)
-      }
-    }
-
-    val webPivot = clients.
-      join(logs, Seq("uid"), "inner")
+    val webs = clients.
+      join(logs, Seq("uid"), "left")
       .withColumn("ex", explode(col("visits")))
       .withColumn("url", col("ex").getItem("url"))
       .withColumn("domain", regexp_replace(decodeUrlAndGetDomain(col("url")), "^www\\.", ""))
-      .join(cats, Seq("domain"), "inner")
-      .groupBy("uid", "gender", "age")
-      .pivot("category")
+      .join(cats, Seq("domain"), "left")
+      .withColumn("category_cleaned", concat(lit("web_"), lower(regexp_replace(col("category"), "-", "_"))))
+      .groupBy("uid")
+      .pivot("category_cleaned")
       .agg(count(col("uid")))
-
-    var webs = webPivot
-
-    for (colName <- webPivot.columns) {
-      if (!excludedColumns.contains(colName)) {
-        webs = webs.withColumnRenamed(colName, "web_" + colName.toLowerCase)
-      }
-    }
 
     val shopColumns = shops.columns.filter(_.startsWith("shop_")).map(col)
     val webColumns = webs.columns.filter(_.startsWith("web_")).map(col)
 
     val finalDF = shops.alias("shops")
-      .join(webs.alias("webs"), col("shops.uid") === col("webs.uid"), "outer")
-      .withColumn("uid_joined", coalesce(col("shops.uid"), col("webs.uid")))
-      .withColumn("gender_joined", coalesce(col("shops.gender"), col("webs.gender")))
-      .withColumn("age_joined", coalesce(col("shops.age"), col("webs.age")))
+      .join(webs.alias("webs"), Seq("uid"), "inner")
       .withColumn(
         "age_cat",
-        when(col("age_joined").between(18, 24), "18-24")
-          .when(col("age_joined").between(25, 34), "25-34")
-          .when(col("age_joined").between(35, 44), "35-44")
-          .when(col("age_joined").between(45, 54), "45-54")
+        when(col("age").between(18, 24), "18-24")
+          .when(col("age").between(25, 34), "25-34")
+          .when(col("age").between(35, 44), "35-44")
+          .when(col("age").between(45, 54), "45-54")
           .otherwise(">=55")
       )
-      .select(Seq(col("uid_joined").alias("uid"), col("gender_joined").alias("gender"), col("age_cat")) ++ shopColumns ++ webColumns: _*)
+      .select(Seq(col("uid"), col("gender"), col("age_cat")) ++ shopColumns ++ webColumns: _*)
 
     finalDF.write
       .format("jdbc")
