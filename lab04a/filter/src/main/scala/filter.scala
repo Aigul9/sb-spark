@@ -14,7 +14,7 @@ object filter {
         .partitionBy("p_date")
         .option("quote", "")
         .mode("overwrite")
-        .csv(path)
+        .json(path)
     }
 
     val spark: SparkSession = SparkSession.builder()
