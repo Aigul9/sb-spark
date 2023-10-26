@@ -33,7 +33,7 @@ object filter {
       "subscribe" -> inputTopic
     )
 	
-	val totalCount = 182540
+	// val totalCount = 182540
 
     val input = spark
       .read
@@ -43,7 +43,7 @@ object filter {
         if (offset.contains("earliest"))
           offset
         else {
-          "{\"" + inputTopic + "\":{\"0\":" + (totalCount + offset) + "}}"
+          "{\"" + inputTopic + "\":{\"0\":" + offset + "}}"
         }
       )
 	  .option("failOnDataLoss", "false")
