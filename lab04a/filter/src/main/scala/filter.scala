@@ -33,7 +33,6 @@ object filter {
       "subscribe" -> inputTopic
     )
 	
-	// val totalCount = 182540
 	val maxOffset = 1460319
 
     val input = spark
@@ -44,7 +43,7 @@ object filter {
         if (offset.contains("earliest"))
           offset
         else {
-          "{\"" + inputTopic + "\":{\"0\":" + (maxOffset + "-1000".toLong + 1) + "}}"
+          "{\"" + inputTopic + "\":{\"0\":" + (maxOffset + offset.toLong + 1) + "}}"
         }
       )
 	  .option("failOnDataLoss", "false")
