@@ -32,6 +32,8 @@ object filter {
       "kafka.bootstrap.servers" -> "spark-master-1.newprolab.com:6667",
       "subscribe" -> inputTopic
     )
+	
+	val totalCount = 182540
 
     val input = spark
       .read
@@ -41,7 +43,7 @@ object filter {
         if (offset.contains("earliest"))
           offset
         else {
-          "{\"" + inputTopic + "\":{\"0\":" + offset + "}}"
+          "{\"" + inputTopic + "\":{\"0\":" + (totalCount + offset) + "}}"
         }
       )
 	  .option("failOnDataLoss", "false")
