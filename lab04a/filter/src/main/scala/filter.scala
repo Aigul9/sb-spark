@@ -44,6 +44,7 @@ object filter {
           "{\"" + inputTopic + "\":{\"0\":" + offset + "}}"
         }
       )
+	  .option("failOnDataLoss", "false")
       .load()
       .cache()
     input.count()
