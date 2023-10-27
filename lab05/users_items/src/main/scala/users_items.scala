@@ -59,14 +59,10 @@ object users_items {
         .parquet(s"$outputDir/$maxDate")
     } else {
 
-      val fs = FileSystem.get(spark.sparkContext.hadoopConfiguration)
-      val userDirs = fs.listStatus(new Path(outputDir)).filter(_.isDirectory).map(_.getPath.toString)
-      val latestDir = userDirs.sortWith(_ > _).head
-
       val inputDF = spark
         .read
         .option("inferSchema", "true")
-        .parquet(latestDir)
+        .parquet(s"$outputDir/20200429")
 
       val unionDF = inputDF
         .unionByName(finalRes)
