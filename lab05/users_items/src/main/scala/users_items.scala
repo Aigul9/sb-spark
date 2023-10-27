@@ -6,17 +6,19 @@ import org.apache.hadoop.fs.{FileSystem, Path}
 object users_items {
   def main(args: Array[String]): Unit = {
 
-    def setDir(dir: String): String = {
-      if (dir.startsWith("/")) dir else "/users/aigul.sibgatullina/" + dir
-    }
+//    def setDir(dir: String): String = {
+//      if (dir.startsWith("/")) dir else "/users/aigul.sibgatullina/" + dir
+//    }
 
     val spark = SparkSession.builder()
       .config("spark.sql.session.timeZone", "UTC")
       .appName("lab05")
       .getOrCreate()
 
-    val inputDir: String = setDir(spark.sparkContext.getConf.get(s"spark.users_items.input_dir"))
-    val outputDir: String = setDir(spark.sparkContext.getConf.get(s"spark.users_items.output_dir"))
+//    val inputDir: String = setDir(spark.sparkContext.getConf.get(s"spark.users_items.input_dir"))
+//    val outputDir: String = setDir(spark.sparkContext.getConf.get(s"spark.users_items.output_dir"))
+    val inputDir: String = spark.sparkContext.getConf.get(s"spark.users_items.input_dir")
+    val outputDir: String = spark.sparkContext.getConf.get(s"spark.users_items.output_dir")
     val update: Integer = spark.sparkContext.getConf.get("spark.users_items.update", "1").toInt
 
     val hdfsView = s"$inputDir/view/"
