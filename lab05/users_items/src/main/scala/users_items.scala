@@ -6,6 +6,13 @@ import org.apache.hadoop.fs.{FileSystem, Path}
 object users_items {
   def main(args: Array[String]): Unit = {
 
+    def expr(myCols: Set[String], allCols: Set[String]) = {
+      allCols.toList.map(x => x match {
+        case x if myCols.contains(x) => col(x)
+        case _ => lit(0).as(x)
+      })
+    }
+
 //    def setDir(dir: String): String = {
 //      if (dir.startsWith("/")) dir else "/users/aigul.sibgatullina/" + dir
 //    }
@@ -35,7 +42,7 @@ object users_items {
       .count()
 
     val resBuy = buy
-      .where(col("uid").isNotNull)
+//      .where(col("uid").isNotNull)
       .select(col("uid"), concat(lit("buy_"), regexp_replace(lower(col("item_id")), "[- ]", "_")).alias("item_id_cleaned"))
       .groupBy("uid")
       .pivot("item_id_cleaned")
@@ -64,8 +71,13 @@ object users_items {
         .option("inferSchema", "true")
         .parquet(s"$outputDir/20200429")
 
+      val cols1 = resView.columns.toSet
+      val cols2 = resBuy.columns.toSet
+      val cols = cols1 ++ cols2
+
       val unionDF = inputDF
-        .unionByName(finalRes)
+        .select(expr(cols1, cols):_*)
+        .union(finalRes.select(expr(cols2, cols):_*))
         .na.fill(0)
         .groupBy("uid")
         .sum()
