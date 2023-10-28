@@ -82,6 +82,7 @@ object agg {
       .format("kafka")
       .trigger(Trigger.ProcessingTime("5 seconds"))
       .options(writeKafkaParams)
+      .option("checkpointLocation", "streaming/chk/chk_kafka_de")
       .outputMode("update")
       .start()
   }
