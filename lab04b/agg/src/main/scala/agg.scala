@@ -37,7 +37,6 @@ object agg {
     val finalRes = sdf
       .select(from_json(col("value").cast("string"), jsonSchema).alias("data"))
       .where(col("data.uid").isNotNull)
-      .groupBy((col("data.timestamp") / 1000).cast("long").alias("start_ts"))
       .agg(
         sum(when(col("data.event_type") === "buy", col("data.item_price"))).alias("revenue"),
         count(when(col("data.event_type") === "buy", col("data.item_price"))).alias("purchases"),
