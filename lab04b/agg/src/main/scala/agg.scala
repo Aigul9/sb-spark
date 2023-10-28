@@ -34,45 +34,23 @@ object agg {
 
     val sdf = spark.readStream.format("kafka").options(readKafkaParams).load
 
-    val buyMetrics = sdf
+    val finalRes = sdf
       .select(from_json(col("value").cast("string"), jsonSchema).alias("data"))
-      .where(col("data.event_type") === "buy")
+      .where(col("data.uid").isNotNull)
+      .groupBy((col("data.timestamp") / 1000).cast("long").alias("start_ts"))
       .agg(
-        sum("data.item_price").alias("revenue"),
-        count("data.item_price").alias("purchases"),
+        sum(when(col("data.event_type") === "buy", col("data.item_price"))).alias("revenue"),
+        count(when(col("data.event_type") === "buy", col("data.item_price"))).alias("purchases"),
+        count(when(col("data.event_type") === "view", col("data.item_price"))).alias("visitors"),
         min("data.timestamp").alias("start_ts")
       )
       .select(
-        (col("start_ts") / 1000).cast("long").alias("start_ts"),
+        col("start_ts"),
         unix_timestamp(from_unixtime(col("start_ts") / 1000) + expr("INTERVAL 1 HOUR")).alias("end_ts"),
         col("revenue"),
+        col("visitors"),
         col("purchases"),
         (col("revenue") / col("purchases")).alias("aov")
-      )
-
-    val viewMetrics = sdf
-      .select(from_json(col("value").cast("string"), jsonSchema).alias("data"))
-      .where(col("data.event_type") === "view")
-      .where(col("data.uid").isNotNull)
-      .agg(
-        count("data.item_price").alias("visitors"),
-        min("data.timestamp").alias("start_ts")
-      )
-      .select(
-        (col("start_ts") / 1000).cast("long").alias("start_ts"),
-        unix_timestamp(from_unixtime(col("start_ts") / 1000) + expr("INTERVAL 1 HOUR")).alias("end_ts"),
-        col("visitors")
-      )
-
-    val finalRes = buyMetrics
-      .join(viewMetrics, Seq("start_ts", "end_ts"), "inner")
-      .select(
-        "start_ts",
-        "end_ts",
-        "revenue",
-        "visitors",
-        "purchases",
-        "aov"
       )
 
     val finalResJson = finalRes.select(to_json(struct(finalRes.columns.map(col): _*)).alias("value"))
