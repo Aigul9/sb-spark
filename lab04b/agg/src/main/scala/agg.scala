@@ -34,69 +34,54 @@ object agg {
 
     val sdf = spark.readStream.format("kafka").options(readKafkaParams).load
 
-    def process(df: DataFrame, id: Long) = {
-      val buyMetrics = df
-        .select(from_json(col("value").cast("string"), jsonSchema).alias("data"))
-        .where(col("data.event_type") === "buy")
-        .agg(
-          sum("data.item_price").alias("revenue"),
-          count("data.item_price").alias("purchases"),
-          min("data.timestamp").alias("start_ts")
-        )
-        .select(
-          (col("start_ts") / 1000).cast("long").alias("start_ts"),
-          unix_timestamp(from_unixtime(col("start_ts") / 1000) + expr("INTERVAL 1 HOUR")).alias("end_ts"),
-          col("revenue"),
-          col("purchases"),
-          (col("revenue") / col("purchases")).alias("aov")
-        )
+    val buyMetrics = sdf
+      .select(from_json(col("value").cast("string"), jsonSchema).alias("data"))
+      .where(col("data.event_type") === "buy")
+      .agg(
+        sum("data.item_price").alias("revenue"),
+        count("data.item_price").alias("purchases"),
+        min("data.timestamp").alias("start_ts")
+      )
+      .select(
+        (col("start_ts") / 1000).cast("long").alias("start_ts"),
+        unix_timestamp(from_unixtime(col("start_ts") / 1000) + expr("INTERVAL 1 HOUR")).alias("end_ts"),
+        col("revenue"),
+        col("purchases"),
+        (col("revenue") / col("purchases")).alias("aov")
+      )
 
-      val viewMetrics = df
-        .select(from_json(col("value").cast("string"), jsonSchema).alias("data"))
-        .where(col("data.event_type") === "view")
-        .where(col("data.uid").isNotNull)
-        .agg(
-          count("data.item_price").alias("visitors"),
-          min("data.timestamp").alias("start_ts")
-        )
-        .select(
-          (col("start_ts") / 1000).cast("long").alias("start_ts"),
-          unix_timestamp(from_unixtime(col("start_ts") / 1000) + expr("INTERVAL 1 HOUR")).alias("end_ts"),
-          col("visitors")
-        )
+    val viewMetrics = sdf
+      .select(from_json(col("value").cast("string"), jsonSchema).alias("data"))
+      .where(col("data.event_type") === "view")
+      .where(col("data.uid").isNotNull)
+      .agg(
+        count("data.item_price").alias("visitors"),
+        min("data.timestamp").alias("start_ts")
+      )
+      .select(
+        (col("start_ts") / 1000).cast("long").alias("start_ts"),
+        unix_timestamp(from_unixtime(col("start_ts") / 1000) + expr("INTERVAL 1 HOUR")).alias("end_ts"),
+        col("visitors")
+      )
 
-      val finalRes = buyMetrics
-        .join(viewMetrics, Seq("start_ts", "end_ts"), "inner")
-        .select(
-          "start_ts",
-          "end_ts",
-          "revenue",
-          "visitors",
-          "purchases",
-          "aov"
-        )
+    val finalRes = buyMetrics
+      .join(viewMetrics, Seq("start_ts", "end_ts"), "inner")
+      .select(
+        "start_ts",
+        "end_ts",
+        "revenue",
+        "visitors",
+        "purchases",
+        "aov"
+      )
 
-      val finalResJson = finalRes.select(to_json(struct(finalRes.columns.map(col): _*)).alias("value"))
+    val finalResJson = finalRes.select(to_json(struct(finalRes.columns.map(col): _*)).alias("value"))
 
-      finalResJson
-        .write
-        .format("kafka")
-        .options(writeKafkaParams)
-        .mode("update")
-        .save()
-    }
-
-    def createSink(df: DataFrame) = {
-      df
-        .writeStream
-        .trigger(Trigger.ProcessingTime("5 seconds"))
-        .foreachBatch { (batchDF: DataFrame, batchId: Long) =>
-          process(batchDF, batchId)
-        }
-        .option("checkpointLocation", "streaming/chk/chk_kafka")
-        .start()
-    }
-
-    createSink(sdf)
+    finalResJson
+      .writeStream
+      .trigger(Trigger.ProcessingTime("5 seconds"))
+      .options(writeKafkaParams)
+      .outputMode("update")
+      .start()
   }
 }
