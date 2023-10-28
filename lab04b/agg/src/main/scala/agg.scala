@@ -16,12 +16,12 @@ object agg {
     val readKafkaParams = Map(
       "kafka.bootstrap.servers" -> "spark-master-1.newprolab.com:6667",
       "subscribe" -> "aigul_sibgatullina",
-      "startingOffsets" -> "latest"
+      "startingOffsets" -> "earliest"
     )
 
     val writeKafkaParams = Map(
       "kafka.bootstrap.servers" -> "spark-master-1.newprolab.com:6667",
-      "subscribe" -> "aigul_sibgatullina_lab04b_out"
+      "topic" -> "aigul_sibgatullina_lab04b_out"
     )
 
     val jsonSchema = new StructType()
@@ -34,33 +34,42 @@ object agg {
 
     val sdf = spark.readStream.format("kafka").options(readKafkaParams).load
 
-    val finalRes = sdf
-      .select(from_json(col("value").cast("string"), jsonSchema).alias("data"))
-      .where(col("data.uid").isNotNull)
-      .agg(
-        sum(when(col("data.event_type") === "buy", col("data.item_price"))).alias("revenue"),
-        count(when(col("data.event_type") === "buy", col("data.item_price"))).alias("purchases"),
-        count(when(col("data.event_type") === "view", col("data.item_price"))).alias("visitors"),
-        min("data.timestamp").alias("start_ts")
-      )
-      .select(
-        col("start_ts"),
-        unix_timestamp(from_unixtime(col("start_ts") / 1000) + expr("INTERVAL 1 HOUR")).alias("end_ts"),
-        col("revenue"),
-        col("visitors"),
-        col("purchases"),
-        (col("revenue") / col("purchases")).alias("aov")
-      )
+    def processBatch(df: DataFrame, batchId: Long): Unit = {
+      val finalRes = df
+        .select(from_json(col("value").cast("string"), jsonSchema).alias("data"))
+        .withColumn("timestamp_s", (col("data.timestamp") / 1000).cast("long"))
+        .groupBy(window(from_unixtime(col("timestamp_s")), "1 hour").alias("time_window"))
+        .agg(
+          sum(when(col("data.event_type") === "buy", col("data.item_price"))).alias("revenue"),
+          count(when(col("data.event_type") === "buy", col("data.item_price"))).alias("purchases"),
+          count(when(col("data.uid").isNotNull, col("data.item_price"))).alias("visitors")
+        )
+        .select(
+          unix_timestamp(col("time_window.start")).alias("start_ts"),
+          unix_timestamp(col("time_window.end")).alias("end_ts"),
+          col("revenue"),
+          col("visitors"),
+          col("purchases"),
+          (col("revenue") / col("purchases")).alias("aov")
+        )
 
-    val finalResJson = finalRes.select(to_json(struct(finalRes.columns.map(col): _*)).alias("value"))
+      val finalResJson = finalRes.select(to_json(struct(finalRes.columns.map(col): _*)).alias("value"))
 
-    finalResJson
+      finalResJson
+        .write
+        .format("kafka")
+        .options(writeKafkaParams)
+        .mode("append")
+        .save()
+    }
+
+    sdf
       .writeStream
-      .format("kafka")
-      .trigger(Trigger.ProcessingTime("5 seconds"))
-      .options(writeKafkaParams)
+      .foreachBatch(processBatch _)
+      .trigger(Trigger.ProcessingTime("1 minute"))
       .option("checkpointLocation", "streaming/chk/chk_kafka_de")
       .outputMode("update")
       .start()
+      .awaitTermination()
   }
 }
