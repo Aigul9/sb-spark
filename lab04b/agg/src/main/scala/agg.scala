@@ -79,6 +79,7 @@ object agg {
 
     finalResJson
       .writeStream
+      .format("kafka")
       .trigger(Trigger.ProcessingTime("5 seconds"))
       .options(writeKafkaParams)
       .outputMode("update")
