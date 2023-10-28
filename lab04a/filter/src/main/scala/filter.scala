@@ -33,7 +33,7 @@ object filter {
       "subscribe" -> inputTopic
     )
 	
-	val maxOffset = 1460319
+    val maxOffset = 1460319
 
     val input = spark
       .read
